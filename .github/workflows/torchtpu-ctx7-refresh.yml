@@ -1,0 +1,29 @@
+# This workflow refreshes the TorchTPU documentation on Context7 once a day.
+
+name: Refresh TorchTPU on Context7
+
+# Controls when the workflow will run
+on:
+  # Runs every day at 00:00 UTC
+  schedule:
+    - cron: "0 0 * * *"
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# This workflow has a single job that calls the Context7 refresh API
+jobs:
+  refresh:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    steps:
+      # Calls the Context7 refresh API.
+      # Requires a repository secret named CONTEXT7_API_KEY (starts with "ctx7sk").
+      # Fails the run on non-2xx responses (e.g. 429 rate limit) and prints headers.
+      - name: Refresh Context7 library
+        run: |
+          curl -sS -i --fail-with-body -X POST https://context7.com/api/v1/refresh \
+            -H "Authorization: Bearer ${{ secrets.CONTEXT7_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"libraryName": "/google-pytorch/torch_tpu"}'
