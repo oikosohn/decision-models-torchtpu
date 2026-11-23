@@ -20,10 +20,32 @@ jobs:
     steps:
       # Calls the Context7 refresh API.
       # Requires a repository secret named CONTEXT7_API_KEY (starts with "ctx7sk").
-      # Fails the run on non-2xx responses (e.g. 429 rate limit) and prints headers.
+      # - 2xx: success
+      # - 400 "too-early" (less than 10 days since last refresh): skipped, not a failure
+      # - anything else (e.g. 401, 429, 5xx): fails the run and prints the response
       - name: Refresh Context7 library
+        env:
+          CONTEXT7_API_KEY: ${{ secrets.CONTEXT7_API_KEY }}
         run: |
-          curl -sS -i --fail-with-body -X POST https://context7.com/api/v1/refresh \
-            -H "Authorization: Bearer ${{ secrets.CONTEXT7_API_KEY }}" \
+          if [ -z "$CONTEXT7_API_KEY" ]; then
+            echo "::error::CONTEXT7_API_KEY secret is empty or not set."
+            exit 1
+          fi
+
+          resp=$(curl -sS -i -w '\n%{http_code}' -X POST https://context7.com/api/v1/refresh \
+            -H "Authorization: Bearer ${CONTEXT7_API_KEY}" \
             -H "Content-Type: application/json" \
-            -d '{"libraryName": "/google-pytorch/torch_tpu"}'
+            -d '{"libraryName": "/google-pytorch/torch_tpu"}')
+
+          code=$(printf '%s\n' "$resp" | tail -n1)
+          body=$(printf '%s\n' "$resp" | sed '$d')
+          printf '%s\n' "$body"
+
+          if [ "$code" -ge 200 ] && [ "$code" -lt 300 ]; then
+            echo "Refresh requested successfully."
+          elif [ "$code" = "400" ] && printf '%s' "$body" | grep -q '"too-early"'; then
+            echo "::notice::Skipped: last refresh was less than 10 days ago."
+          else
+            echo "::error::Refresh failed with HTTP $code."
+            exit 1
+          fi
